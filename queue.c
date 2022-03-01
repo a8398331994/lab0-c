@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "harness.h"
+#include "list.h"
 #include "queue.h"
 
 /* Notice: sometimes, Cppcheck would find the potential NULL pointer bugs,
@@ -17,11 +18,33 @@
  */
 struct list_head *q_new()
 {
-    return NULL;
+    struct list_head *q = (struct list_head *) malloc(sizeof(struct list_head));
+    if (!q)
+        return NULL;
+    INIT_LIST_HEAD(q);
+
+    return q;
 }
 
 /* Free all storage used by queue */
-void q_free(struct list_head *l) {}
+void q_free(struct list_head *l)
+{
+    if (!l)
+        return;
+
+    if (list_empty(l)) {
+        free(l);
+        return;
+    }
+
+    struct list_head *cur = NULL, *safe = NULL;
+    // Need modify list in list so use safe iteration macro function.
+    list_for_each_safe (cur, safe, l) {
+        element_t *e = container_of(cur, element_t, list);
+        q_release_element(e);
+    }
+    free(l);
+}
 
 /*
  * Attempt to insert element at head of queue.
@@ -32,6 +55,28 @@ void q_free(struct list_head *l) {}
  */
 bool q_insert_head(struct list_head *head, char *s)
 {
+    if (!head)
+        return false;
+
+    element_t *node = (element_t *) malloc(sizeof(element_t));
+
+    if (!node)
+        return false;
+
+    // Need to add 1 to cover the '\0'
+    size_t length = strlen(s) + 1;
+    node->value = (char *) malloc(sizeof(length));
+
+
+    if (node->value) {
+        strncpy(node->value, s, length);
+    } else {
+        free(node);
+        return false;
+    }
+
+    list_add(&node->list, head);
+
     return true;
 }
 
@@ -44,6 +89,24 @@ bool q_insert_head(struct list_head *head, char *s)
  */
 bool q_insert_tail(struct list_head *head, char *s)
 {
+    if (!head)
+        return false;
+
+    element_t *node = (element_t *) malloc(sizeof(element_t));
+
+    if (!node)
+        return false;
+
+    size_t len = strlen(s) + 1;
+    node->value = (char *) malloc(sizeof(len));
+    if (node->value) {
+        strncpy(node->value, s, len);
+    } else {
+        free(node);
+        return false;
+    }
+
+    list_add_tail(&node->list, head);
     return true;
 }
 
@@ -91,7 +154,17 @@ void q_release_element(element_t *e)
  */
 int q_size(struct list_head *head)
 {
-    return -1;
+    if (!head)
+        return 0;
+
+    size_t len = 0;
+
+    struct list_head *node = NULL;
+    list_for_each (node, head)
+        len++;
+
+
+    return len;
 }
 
 /*
