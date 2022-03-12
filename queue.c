@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,7 +127,19 @@ bool q_insert_tail(struct list_head *head, char *s)
  */
 element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
-    return NULL;
+    if (!head || list_empty(head))
+        return NULL;
+
+    element_t *e = list_first_entry(head, element_t, list);
+    list_del_init(head->next);
+
+    // Need to check sp is already been allocate, and element is not removed..
+    if (sp) {
+        strncpy(sp, e->value, bufsize - 1);
+        sp[bufsize - 1] = '\0';
+    }
+
+    return e;
 }
 
 /*
@@ -135,7 +148,19 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
  */
 element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
-    return NULL;
+    if (!head || list_empty(head))
+        return NULL;
+
+    element_t *e = list_last_entry(head, element_t, list);
+    list_del_init(head->prev);
+
+    if (sp) {
+        strncpy(sp, e->value, bufsize - 1);
+        sp[bufsize - 1] = '\0';
+    }
+
+
+    return e;
 }
 
 /*
@@ -178,6 +203,23 @@ int q_size(struct list_head *head)
 bool q_delete_mid(struct list_head *head)
 {
     // https://leetcode.com/problems/delete-the-middle-node-of-a-linked-list/
+
+    if (!head || list_empty(head))
+        return false;
+
+    struct list_head *front = head->next;
+    struct list_head *back = head->prev;
+
+    // Find middle node from both side of list, and front node would be the
+    // target which need to be removed.
+    while (front != back && back->prev != front) {
+        front = front->next;
+        back = back->prev;
+    }
+
+    list_del(front);
+    q_release_element(container_of(front, element_t, list));
+
     return true;
 }
 
@@ -193,8 +235,47 @@ bool q_delete_mid(struct list_head *head)
 bool q_delete_dup(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-duplicates-from-sorted-list-ii/
+    if (!head)
+        return false;
+    if (!list_empty(head)) {
+        struct list_head *ptr = NULL, *next = NULL;
+        bool last_dup = false;
+
+        list_for_each_safe (ptr, next, head) {
+            element_t *cur_element = list_entry(ptr, element_t, list);
+            bool match =
+                (next != head &&
+                 strcmp(cur_element->value,
+                        list_entry(next, element_t, list)->value) == 0);
+            if (match || last_dup) {
+                list_del(ptr);
+                q_release_element(cur_element);
+            }
+
+            last_dup = match;
+        }
+    }
+
     return true;
 }
+
+/*
+ * Exchange two adjacent nodes and reture pointer a
+ */
+
+// struct list_head *exchange(struct list_head *a, struct list_head *b)
+//{
+//    struct list_head *prev = a->prev;
+//    struct list_head *next = b->next;
+//    a->next = next;
+//    next->prev = a;
+//    b->prev = prev;
+//    prev->next = b;
+//    b->next = a;
+//    a->prev = b;
+//
+//    return a;
+//}
 
 /*
  * Attempt to swap every two adjacent nodes.
@@ -202,7 +283,31 @@ bool q_delete_dup(struct list_head *head)
 void q_swap(struct list_head *head)
 {
     // https://leetcode.com/problems/swap-nodes-in-pairs/
+    if (!head || list_empty(head))
+        return;
+
+    // struct list_head *left = head->next, *right = left->next;
+    // while(left != head && right != head) {
+    //     left->next = right->next;
+    //     right->next->prev = left;
+    //     right->prev = left->prev;
+    //     left->prev->next = right;
+    //     left->prev = right;
+    //     right->next = left;
+
+    //     left = left->next;
+    //     right = left->next;
+    // }
+
+    struct list_head *node;
+    for (node = head->next; (node->next != head) && (node != head);
+         node = node->next) {
+        struct list_head *next = node->next;
+        list_del(node);
+        list_add(node, next);
+    }
 }
+
 
 /*
  * Reverse elements in queue
@@ -211,11 +316,94 @@ void q_swap(struct list_head *head)
  * (e.g., by calling q_insert_head, q_insert_tail, or q_remove_head).
  * It should rearrange the existing ones.
  */
-void q_reverse(struct list_head *head) {}
+void q_reverse(struct list_head *head)
+{
+    if (!head || list_empty(head))
+        return;
+
+    struct list_head *node = NULL;
+    struct list_head *safe = NULL;
+    list_for_each_safe (node, safe, head) {
+        list_move(node, head);
+    }
+
+    // struct list_head *h = head->next;
+    // struct list_head *t = head->prev;
+
+    // while(h != t && h->next != t) {
+    //     element_t *he = list_entry(h, element_t, list);
+    //     element_t *ht = list_entry(t, element_t, list);
+
+    //     char *tmp = he->value;
+    //     he->value = ht->value;
+    //     ht->value = tmp;
+
+    //     h = h->next;
+    //     t = t->prev;
+    // }
+}
+
+struct list_head *sorted_merge(struct list_head *front, struct list_head *back)
+{
+    if (!front || !back)
+        return front ? front : back;
+
+    struct list_head *result = NULL;
+
+    if (strcmp(list_entry(front, element_t, list)->value,
+               list_entry(back, element_t, list)->value) > 0) {
+        result = back;
+        result->next = sorted_merge(front, back->next);
+    } else {
+        result = front;
+        result->next = sorted_merge(front->next, back);
+    }
+
+    return result;
+}
+
+
+void merge_sort(struct list_head **head)
+{
+    if (!*head || !(*head)->next)
+        return;
+
+    struct list_head *slow = *head, *fast = slow->next;
+    while (fast && fast->next) {
+        slow = slow->next;
+        fast = fast->next->next;
+    }
+
+    struct list_head *front = *head;
+    struct list_head *back = slow->next;
+    slow->next = NULL;
+
+    merge_sort(&front);
+    merge_sort(&back);
+
+    *head = sorted_merge(front, back);
+}
 
 /*
  * Sort elements of queue in ascending order
  * No effect if q is NULL or empty. In addition, if q has only one
  * element, do nothing.
  */
-void q_sort(struct list_head *head) {}
+void q_sort(struct list_head *head)
+{
+    if (!head || list_empty(head) || list_is_singular(head))
+        return;
+
+    // Let linked list to be singly linked list.
+    head->prev->next = NULL;
+    merge_sort(&head->next);
+
+    struct list_head *tmp = head;
+    while (tmp->next) {
+        tmp->next->prev = tmp;
+        tmp = tmp->next;
+    }
+
+    tmp->next = head;
+    head->prev = tmp;
+}
